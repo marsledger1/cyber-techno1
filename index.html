@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Cyber Techno / Industrial Bass Synth</title>
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --panel: rgba(18, 24, 22, 0.92);
+      --panel-strong: rgba(11, 20, 17, 0.96);
+      --neon-green: #00ff66;
+      --green-soft: #7ef7b2;
+      --cyan: #2be7ff;
+      --cyan-soft: #8fe8ff;
+      --text: #dfffe6;
+      --muted: rgba(223, 255, 230, 0.68);
+      --danger: #ff4d80;
+      --shadow: rgba(0, 255, 102, 0.35);
+      --scanline: rgba(255, 255, 255, 0.06);
+      --grid: rgba(0, 255, 102, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(0, 255, 102, 0.08), transparent 40%),
+        linear-gradient(180deg, rgba(9, 14, 13, 0.96), rgba(5, 8, 9, 1));
+      color: var(--text);
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.02),
+        rgba(255, 255, 255, 0.02) 1px,
+        transparent 2px,
+        transparent 4px
+      );
+      pointer-events: none;
+      mix-blend-mode: screen;
+      opacity: 0.7;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.25));
+      pointer-events: none;
+    }
+
+    .app {
+      width: min(960px, calc(100vw - 24px));
+      margin: 16px auto 40px;
+      padding: 18px 18px 22px;
+      border: 1px solid rgba(0, 255, 102, 0.4);
+      border-radius: 18px;
+      background: rgba(10, 14, 16, 0.86);
+      box-shadow:
+        0 0 0 1px rgba(43, 231, 255, 0.18),
+        0 0 30px rgba(0, 255, 102, 0.16),
+        inset 0 0 24px rgba(0, 255, 102, 0.04);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .app::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,255,102,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,102,0.06) 1px, transparent 1px);
+      background-size: 24px 24px;
+      mask-image: radial-gradient(circle at center, rgba(0,0,0,1), rgba(0,0,0,0.4));
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid rgba(0, 255, 102, 0.18);
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 800;
+      font-size: clamp(0.72rem, 2vw, 1rem);
+      text-shadow: 0 0 12px rgba(0,255,102,0.48);
+    }
+
+    .brand strong {
+      font-size: clamp(1.2rem, 3.2vw, 2rem);
+      color: var(--neon-green);
+    }
+
+    .brand span {
+      color: var(--cyan-soft);
+      font-size: clamp(0.6rem, 1.8vw, 0.8rem);
+    }
+
+    .status {
+      color: var(--green-soft);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-size: 0.68rem;
+      opacity: 0.9;
+      text-shadow: 0 0 8px rgba(0,255,102,0.5);
+    }
+
+    .main {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .panel {
+      border: 1px solid rgba(0,255,102,0.22);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(12,18,22,0.88), rgba(7,10,12,0.92));
+      box-shadow: inset 0 0 18px rgba(0,255,102,0.03);
+      padding: 16px;
+    }
+
+    .visual-panel {
+      padding: 12px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 260px;
+      display: block;
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at center, rgba(0,255,102,0.08), transparent 60%),
+        rgba(7, 14, 9, 1);
+      border: 1px solid rgba(0,255,102,0.18);
+      box-shadow: inset 0 0 20px rgba(0,255,102,0.08);
+    }
+
+    .controls {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .power-btn, .secondary-btn {
+      appearance: none;
+      border: 1px solid rgba(0,255,102,0.36);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(0,255,102,0.16), rgba(0,255,102,0.04));
+      color: var(--text);
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+      box-shadow: 0 0 20px rgba(0,255,102,0.12);
+      user-select: none;
+    }
+
+    .power-btn {
+      flex: 1 1 170px;
+      min-height: 62px;
+      font-size: clamp(1rem, 2.2vw, 1.25rem);
+      background: linear-gradient(135deg, rgba(0,255,102,0.28), rgba(0,255,102,0.05));
+    }
+
+    .secondary-btn {
+      min-height: 52px;
+      padding: 12px 18px;
+      font-size: 0.7rem;
+    }
+
+    .power-btn:hover, .secondary-btn:hover,
+    .power-btn:active, .secondary-btn:active {
+      transform: translateY(-1px) scale(1.01);
+      border-color: rgba(0,255,102,0.72);
+      box-shadow: 0 0 18px rgba(0,255,102,0.18);
+    }
+
+    .power-btn.is-playing {
+      background: linear-gradient(135deg, rgba(255,77,128,0.22), rgba(255,77,128,0.08));
+      border-color: rgba(255,77,128,0.5);
+      box-shadow: 0 0 20px rgba(255,77,128,0.12);
+    }
+
+    .knob-block {
+      display: grid;
+      gap: 10px;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .value {
+      color: var(--cyan-soft);
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--neon-green);
+      cursor: pointer;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini {
+      border: 1px solid rgba(43,231,255,0.2);
+      border-radius: 12px;
+      background: rgba(8,16,20,0.82);
+      padding: 12px;
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: var(--cyan-soft);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .mini strong {
+      color: var(--neon-green);
+      display: block;
+      font-size: 1.15rem;
+      margin-top: 4px;
+      letter-spacing: 0.08em;
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        width: min(100vw - 12px, 960px);
+        margin: 8px auto 30px;
+        padding: 12px 12px 16px;
+        border-radius: 12px;
+      }
+
+      .main {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      canvas {
+        height: 220px;
+      }
+
+      .button-row {
+        flex-direction: column;
+      }
+
+      .power-btn, .secondary-btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <span>cyber / industrial</span>
+        <strong>techno synth</strong>
+      </div>
+      <div class="status" id="transportStatus">standby</div>
+    </div>
+
+    <div class="main">
+      <div class="panel visual-panel">
+        <canvas id="visualizer" width="900" height="280" aria-label="Audio waveform visualizer"></canvas>
+      </div>
+
+      <div class="controls panel">
+        <div class="button-row">
+          <button id="toggleBtn" class="power-btn" type="button" aria-label="Play or stop audio">play</button>
+          <button id="randomizeBtn" class="secondary-btn" type="button">randomize melody</button>
+        </div>
+
+        <div class="knob-block">
+          <div class="label-row">
+            <span>bpm</span>
+            <span id="bpmValue" class="value">128</span>
+          </div>
+          <input id="bpmSlider" type="range" min="120" max="150" step="1" value="128" aria-label="Tempo" />
+        </div>
+
+        <div class="knob-block">
+          <div class="label-row">
+            <span>filter cutoff</span>
+            <span id="cutoffValue" class="value">4200 Hz</span>
+          </div>
+          <input id="cutoffSlider" type="range" min="200" max="9000" step="20" value="4200" aria-label="Filter cutoff" />
+        </div>
+
+        <div class="mini-grid">
+          <div class="mini">mode<strong id="modeLabel">phrygian</strong></div>
+          <div class="mini">root<strong id="rootLabel">A</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script>
+    const toggleBtn = document.getElementById('toggleBtn');
+    const randomizeBtn = document.getElementById('randomizeBtn');
+    const bpmSlider = document.getElementById('bpmSlider');
+    const bpmValue = document.getElementById('bpmValue');
+    const cutoffSlider = document.getElementById('cutoffSlider');
+    const cutoffValue = document.getElementById('cutoffValue');
+    const transportStatus = document.getElementById('transportStatus');
+    const modeLabel = document.getElementById('modeLabel');
+    const rootLabel = document.getElementById('rootLabel');
+    const canvas = document.getElementById('visualizer');
+    const ctx = canvas.getContext('2d');
+
+    const output = new Tone.Gain(0.82);
+    output.toDestination();
+    const analyser = new Tone.Analyser('waveform', 2048);
+    output.connect(analyser);
+
+    const rootNotes = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+    const scaleModes = {
+      minor: [0, 2, 3, 5, 7, 8, 10],
+      phrygian: [0, 1, 3, 5, 7, 8, 10],
+      dorian: [0, 2, 3, 5, 7, 9, 10],
+      aeolian: [0, 2, 3, 5, 7, 8, 10]
+    };
+
+    let isPlaying = false;
+    let currentScale = 'phrygian';
+    let rootMidi = 45;
+    let melodyPattern = [];
+    let melodySequence;
+    let bassSequence;
+    let kickSequence;
+    let hatSequence;
+
+    const masterBus = new Tone.Gain(0.92);
+    masterBus.connect(output);
+
+    const kickGain = new Tone.Gain(0.9);
+    const kickFilter = new Tone.Filter(32, 'lowpass');
+    kickFilter.connect(kickGain);
+    kickGain.connect(masterBus);
+
+    const kickOsc = new Tone.Oscillator({ type: 'sine', volume: 3 }).connect(kickFilter);
+    kickOsc.start();
+
+    const acidSynth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'sawtooth' },
+      envelope: { attack: 0.004, decay: 0.08, sustain: 0.12, release: 0.08 },
+      volume: -7
+    });
+
+    const acidFilter = new Tone.Filter(4200, 'lowpass');
+    acidFilter.Q.value = 6;
+    acidSynth.connect(acidFilter);
+    acidFilter.connect(masterBus);
+
+    const acidDrive = new Tone.Distortion(0.28);
+    acidFilter.connect(acidDrive);
+    acidDrive.connect(masterBus);
+
+    const melodySynth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.02, decay: 0.2, sustain: 0.2, release: 0.5 },
+      volume: -12
+    });
+
+    const melodyFilter = new Tone.Filter(2200, 'lowpass');
+    melodySynth.connect(melodyFilter);
+    melodyFilter.connect(masterBus);
+
+    const hatNoise = new Tone.NoiseSynth({
+      noise: { type: 'white' },
+      envelope: { attack: 0.001, decay: 0.07, sustain: 0, release: 0.02 }
+    });
+    const hatFilter = new Tone.Filter(7000, 'highpass');
+    hatNoise.connect(hatFilter);
+    hatFilter.connect(masterBus);
+
+    const openHatNoise = new Tone.NoiseSynth({
+      noise: { type: 'white' },
+      envelope: { attack: 0.001, decay: 0.28, sustain: 0, release: 0.08 }
+    });
+    const openHatFilter = new Tone.Filter(4000, 'highpass');
+    openHatNoise.connect(openHatFilter);
+    openHatFilter.connect(masterBus);
+
+    function midiToNote(midi) {
+      return Tone.Frequency(midi, 'midi').toNote();
+    }
+
+    function setCutoff(value) {
+      const cutoff = Number(value) || 4200;
+      acidFilter.frequency.value = cutoff;
+      melodyFilter.frequency.value = cutoff * 0.42;
+      cutoffValue.textContent = `${Math.round(cutoff)} Hz`;
+    }
+
+    function setBpm(value) {
+      const bpm = Number(value) || 128;
+      Tone.Transport.bpm.value = bpm;
+      bpmValue.textContent = bpm;
+    }
+
+    function generateRoot() {
+      const idx = Math.floor(Math.random() * rootNotes.length);
+      rootMidi = 45 + (Math.random() > 0.5 ? 12 : 0) + idx;
+      const rootName = rootNotes[idx];
+      rootLabel.textContent = rootName;
+      return rootName;
+    }
+
+    function randomizeMelody() {
+      const modes = Object.keys(scaleModes);
+      currentScale = modes[Math.floor(Math.random() * modes.length)];
+      modeLabel.textContent = currentScale;
+      generateRoot();
+
+      const scale = scaleModes[currentScale];
+      const patternLength = 16;
+      melodyPattern = Array.from({ length: patternLength }, (_, i) => {
+        const select = Math.floor(Math.random() * scale.length);
+        const octave = i % 5 === 0 ? 12 : i % 3 === 0 ? 0 : 12;
+        return rootMidi + scale[select] + octave;
+      });
+
+      buildMelodySequence();
+    }
+
+    function buildMelodySequence() {
+      if (melodySequence) {
+        melodySequence.dispose();
+      }
+
+      melodySequence = new Tone.Sequence((time, midi) => {
+        const note = midiToNote(midi);
+        melodySynth.triggerAttackRelease(note, '8n', time, 0.38 + Math.random() * 0.15);
+      }, melodyPattern, '16n');
+
+      melodySequence.start(0);
+    }
+
+    function buildBassSequence() {
+      if (bassSequence) {
+        bassSequence.dispose();
+      }
+
+      const bassPattern = [
+        0, 0, -2, -2,
+        0, 0, -3, -3,
+        -5, -5, -3, -3,
+        -2, -2, -3, -5
+      ];
+
+      bassSequence = new Tone.Sequence((time, offset) => {
+        const note = rootMidi + offset + 12;
+        const filterValue = Number(cutoffSlider.value) * (0.5 + (Math.random() * 0.25));
+        acidFilter.frequency.setValueAtTime(filterValue, time);
+        acidDrive.wet.value = 0.25 + Math.random() * 0.2;
+        acidSynth.triggerAttackRelease(midiToNote(note), '8n', time, 0.7);
+      }, bassPattern, '8n');
+
+      bassSequence.start(0);
+    }
+
+    function buildKickSequence() {
+      if (kickSequence) {
+        kickSequence.dispose();
+      }
+
+      kickSequence = new Tone.Sequence((time) => {
+        if (Math.random() < 0.18) {
+          kickOsc.frequency.setValueAtTime(52, time);
+          kickOsc.frequency.exponentialRampToValueAtTime(32, time + 0.08);
+          kickGain.gain.cancelScheduledValues(time);
+          kickGain.gain.setValueAtTime(0.0001, time);
+          kickGain.gain.exponentialRampToValueAtTime(1.18, time + 0.015);
+          kickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
+        } else {
+          kickOsc.frequency.setValueAtTime(46, time);
+          kickOsc.frequency.exponentialRampToValueAtTime(28, time + 0.09);
+          kickGain.gain.cancelScheduledValues(time);
+          kickGain.gain.setValueAtTime(0.0001, time);
+          kickGain.gain.exponentialRampToValueAtTime(1.0, time + 0.012);
+          kickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.14);
+        }
+      }, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], '16n');
+
+      kickSequence.start(0);
+    }
+
+    function buildHatSequence() {
+      if (hatSequence) {
+        hatSequence.dispose();
+      }
+
+      const hatPattern = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
+      const openPattern = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0];
+
+      hatSequence = new Tone.Sequence((time, step) => {
+        const isClosed = hatPattern[step];
+        const isOpen = openPattern[step];
+
+        if (isClosed) {
+          hatNoise.triggerAttackRelease('32n', time, 0.7);
+        }
+
+        if (isOpen) {
+          openHatNoise.triggerAttackRelease('8n', time, 0.25);
+        }
+      }, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], '16n');
+
+      hatSequence.start(0);
+    }
+
+    function drawWaveform() {
+      const width = canvas.width;
+      const height = canvas.height;
+      const waveform = analyser.getValue();
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = 'rgba(6, 11, 9, 0.9)';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.beginPath();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#00ff66';
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = 'rgba(0,255,102,0.38)';
+
+      const sliceWidth = width / waveform.length;
+      for (let i = 0; i < waveform.length; i++) {
+        const x = i * sliceWidth;
+        const y = (waveform[i] + 1) * height / 2;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.strokeStyle = 'rgba(43,231,255,0.18)';
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+
+      requestAnimationFrame(drawWaveform);
+    }
+
+    async function startAudio() {
+      await Tone.start();
+      Tone.Transport.start();
+      isPlaying = true;
+      toggleBtn.textContent = 'stop';
+      toggleBtn.classList.add('is-playing');
+      transportStatus.textContent = 'live';
+    }
+
+    function stopAudio() {
+      Tone.Transport.stop();
+      Tone.Transport.cancel();
+      isPlaying = false;
+      toggleBtn.textContent = 'play';
+      toggleBtn.classList.remove('is-playing');
+      transportStatus.textContent = 'standby';
+    }
+
+    toggleBtn.addEventListener('click', async () => {
+      if (isPlaying) {
+        stopAudio();
+      } else {
+        await startAudio();
+      }
+    });
+
+    randomizeBtn.addEventListener('click', () => {
+      randomizeMelody();
+    });
+
+    bpmSlider.addEventListener('input', (e) => {
+      setBpm(e.target.value);
+    });
+
+    cutoffSlider.addEventListener('input', (e) => {
+      setCutoff(e.target.value);
+    });
+
+    window.addEventListener('pointerdown', () => {
+      if (!isPlaying) {
+        Tone.start();
+      }
+    }, { passive: true });
+
+    function init() {
+      Tone.Transport.swing = false;
+      Tone.Transport.bpm.value = 128;
+      setBpm(128);
+      setCutoff(4200);
+      randomizeMelody();
+      buildBassSequence();
+      buildKickSequence();
+      buildHatSequence();
+      drawWaveform();
+    }
+
+    init();
+  </script>
+</body>
+</html>
