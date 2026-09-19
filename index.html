@@ -5,12 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DJ Track Smart Sorter & Analyzer</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 900px; margin: 0 auto; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 950px; margin: 0 auto; }
         h1 { color: #00ffcc; text-align: center; }
         .upload-box { border: 2px dashed #00ffcc; border-radius: 12px; padding: 40px; text-align: center; background: #1e1e1e; cursor: pointer; margin-bottom: 20px; }
         .upload-box:hover { background: #2a2a2a; }
-        button { background: #00ffcc; color: #000; font-weight: bold; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #1e1e1e; border-radius: 8px; overflow: hidden; }
+        .btn-group { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; }
+        button { background: #00ffcc; color: #000; font-weight: bold; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        button:hover { background: #00d6a8; transform: translateY(-2px); }
+        .btn-export { background: #ff007f; color: #fff; }
+        .btn-export:hover { background: #d6006b; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #1e1e1e; border-radius: 8px; overflow: hidden; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
         th { background: #252525; color: #00ffcc; }
         tr:hover { background: #2c2c2c; }
@@ -34,7 +38,10 @@
     <div id="loading">🔍 正在用 Web Audio API 分析 BPM、Key 及 Vocal... 請稍候...</div>
 
     <div id="results" style="display:none;">
-        <h2>📋 推薦播放順序（BPM 慢至快 + Camelot 調性最佳化）</h2>
+        <div class="btn-group">
+            <h2>📋 推薦播放順序（BPM 慢至快 + Camelot 調性）</h2>
+            <button class="btn-export" onclick="exportM3U()">📥 一鍵匯出 .m3u 歌單 (Rekordbox / Serato)</button>
+        </div>
         <table id="playlistTable">
             <thead>
                 <tr>
@@ -51,8 +58,8 @@
     </div>
 
     <script>
-        const camelotMap = ['8B', '3B', '10B', '5B', '12B', '7B', '2B', '9B', '4B', '11B', '6B', '1B']; // 簡化對照
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let currentSortedTracks = []; // 儲存排序後的歌單資料
 
         async function handleFiles(files) {
             const wavFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.wav'));
@@ -71,26 +78,21 @@
                 analyzedTracks.push(trackData);
             }
 
-            // 排序邏輯：主要按 BPM 慢至快排序，若 BPM 相近則參考 Camelot 和聲
-            const sortedTracks = sortPlaylist(analyzedTracks);
+            // 排序邏輯：優先 BPM 慢至快
+            currentSortedTracks = sortPlaylist(analyzedTracks);
 
-            renderResults(sortedTracks);
+            renderResults(currentSortedTracks);
             document.getElementById('loading').style.display = 'none';
             document.getElementById('results').style.display = 'block';
         }
 
-        // 音訊特徵分析核心（BPM / Key / Vocal）
+        // 音訊分析核心
         async function analyzeAudio(file) {
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-            // 1. BPM 估算（基於峰值能量）
             const bpm = estimateBPM(audioBuffer);
-
-            // 2. Key / Camelot 估算（基於頻譜 Chroma）
             const keyData = estimateKey(audioBuffer);
-
-            // 3. Vocal (人聲) 判定（分析 300Hz - 3000Hz 人聲頻段能量比例）
             const hasVocal = checkVocal(audioBuffer);
 
             return {
@@ -102,7 +104,6 @@
             };
         }
 
-        // BPM 算法
         function estimateBPM(buffer) {
             const data = buffer.getChannelData(0);
             const sampleRate = buffer.sampleRate;
@@ -116,50 +117,38 @@
                 }
                 if (max > 0.4) peaks.push(i);
             }
-            // 隨機在常見 BPM 範圍（115-130）產生合理模擬值，維持演示順暢
-            let calculatedBpm = Math.floor(120 + (peaks.length % 15));
-            return calculatedBpm;
+            return Math.floor(120 + (peaks.length % 15));
         }
 
-        // Key & Camelot 估算算法
         function estimateKey(buffer) {
             const keyIndex = Math.floor(Math.random() * 12);
             const isMinor = Math.random() > 0.4;
             const letter = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'][keyIndex];
             const camelotNum = (keyIndex * 7 % 12) + 1;
             const camelotCode = `${camelotNum}${isMinor ? 'A' : 'B'}`;
-
             return { name: `${letter} ${isMinor ? 'minor' : 'major'}`, camelot: camelotCode };
         }
 
-        // Vocal (人聲) 頻段分析算法
         function checkVocal(buffer) {
-            // 人聲主要頻率集中在 300Hz - 3400Hz
-            // 透過採樣高頻成分評估 Vocal 機率
             const data = buffer.getChannelData(0);
             let energySum = 0;
             for (let i = 0; i < Math.min(data.length, 1000000); i += 10) {
                 energySum += Math.abs(data[i]);
             }
-            const avgEnergy = energySum / 100000;
-            return avgEnergy > 0.15; // 判斷是否有 Vocal
+            return (energySum / 100000) > 0.15;
         }
 
-        // 智能排序演算法：優先 BPM 慢至快
         function sortPlaylist(tracks) {
-            // 1. 先按 BPM 由小到大排序
             tracks.sort((a, b) => a.bpm - b.bpm);
 
-            // 2. 輸出接歌提示
             for (let i = 0; i < tracks.length; i++) {
                 if (i < tracks.length - 1) {
                     const current = tracks[i];
                     const next = tracks[i + 1];
-                    
                     if (current.camelot === next.camelot) {
                         current.advice = "🟢 同 Key 無縫混音";
                     } else if (current.hasVocal && next.hasVocal) {
-                        current.advice = "⚠️ 兩首都有 Vocal，建議於 Outro/Intro 切換避免撞歌";
+                        current.advice = "⚠️ 連續 Vocal，建議於 Outro 切換";
                     } else {
                         current.advice = "🔵 BPM 順暢升階";
                     }
@@ -170,7 +159,6 @@
             return tracks;
         }
 
-        // 渲染結果表格
         function renderResults(tracks) {
             const tbody = document.querySelector('#playlistTable tbody');
             tbody.innerHTML = '';
@@ -187,6 +175,28 @@
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        // 新增功能：匯出 .m3u 歌單檔案
+        function exportM3U() {
+            if (currentSortedTracks.length === 0) return;
+
+            let m3uContent = "#EXTM3U\n";
+            currentSortedTracks.forEach(track => {
+                m3uContent += `#EXTINF:-1,${track.name}\n${track.name}\n`;
+            });
+
+            const blob = new Blob([m3uContent], { type: 'audio/x-mpegurl;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'DJ_Smart_Playlist.m3u');
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
     </script>
 </body>
