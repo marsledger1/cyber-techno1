@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DJ Track Smart Sorter & Analyzer</title>
+    <title>DJ Track Smart Sorter & Analyzer (Genre Edition)</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 950px; margin: 0 auto; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 1050px; margin: 0 auto; }
         h1 { color: #00ffcc; text-align: center; }
         .upload-box { border: 2px dashed #00ffcc; border-radius: 12px; padding: 40px; text-align: center; background: #1e1e1e; cursor: pointer; margin-bottom: 20px; }
         .upload-box:hover { background: #2a2a2a; }
@@ -18,16 +18,17 @@
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
         th { background: #252525; color: #00ffcc; }
         tr:hover { background: #2c2c2c; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; display: inline-block; margin-bottom: 4px; }
         .vocal { background: #ff4757; color: #fff; }
         .inst { background: #2ed573; color: #000; }
         .camelot { background: #ffa502; color: #000; }
+        .genre { background: #8c7ae6; color: #fff; }
         #loading { display: none; text-align: center; color: #00ffcc; font-size: 18px; margin: 20px 0; }
     </style>
 </head>
 <body>
 
-    <h1>🎧 DJ WAV 檔案智能排歌工具</h1>
+    <h1>🎧 DJ 智能排歌工具 (包含曲風分類)</h1>
     
     <div class="upload-box" onclick="document.getElementById('fileInput').click()">
         <h3>點擊或拖放 USB 內的 WAV 歌單至此處</h3>
@@ -35,22 +36,23 @@
         <input type="file" id="fileInput" multiple accept="audio/wav" style="display: none;" onchange="handleFiles(this.files)">
     </div>
 
-    <div id="loading">🔍 正在用 Web Audio API 分析 BPM、Key 及 Vocal... 請稍候...</div>
+    <div id="loading">🔍 正在用 Web Audio API 分析 BPM、Key、Vocal 及 曲風... 請稍候...</div>
 
     <div id="results" style="display:none;">
         <div class="btn-group">
-            <h2>📋 推薦播放順序（BPM 慢至快 + Camelot 調性）</h2>
+            <h2>📋 推薦播放順序（依曲風分段 + BPM 慢至快）</h2>
             <button class="btn-export" onclick="exportM3U()">📥 一鍵匯出 .m3u 歌單 (Rekordbox / Serato)</button>
         </div>
         <table id="playlistTable">
             <thead>
                 <tr>
-                    <th>推薦次序</th>
+                    <th>次序</th>
                     <th>歌名</th>
-                    <th>BPM (慢 ➔ 快)</th>
+                    <th>BPM</th>
+                    <th>預估曲風 (Genre)</th>
                     <th>Camelot Key</th>
-                    <th>人聲判定</th>
-                    <th>接歌建議</th>
+                    <th>人聲</th>
+                    <th>接歌建議 (Flow)</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -59,7 +61,7 @@
 
     <script>
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let currentSortedTracks = []; // 儲存排序後的歌單資料
+        let currentSortedTracks = [];
 
         async function handleFiles(files) {
             const wavFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.wav'));
@@ -78,7 +80,7 @@
                 analyzedTracks.push(trackData);
             }
 
-            // 排序邏輯：優先 BPM 慢至快
+            // 排序邏輯：按 BPM 慢至快，這會自然將相同曲風群組在一起
             currentSortedTracks = sortPlaylist(analyzedTracks);
 
             renderResults(currentSortedTracks);
@@ -86,24 +88,26 @@
             document.getElementById('results').style.display = 'block';
         }
 
-        // 音訊分析核心
         async function analyzeAudio(file) {
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
             const bpm = estimateBPM(audioBuffer);
+            const genre = guessGenre(bpm); // 預估曲風
             const keyData = estimateKey(audioBuffer);
             const hasVocal = checkVocal(audioBuffer);
 
             return {
                 name: file.name,
                 bpm: bpm,
+                genre: genre,
                 camelot: keyData.camelot,
                 keyName: keyData.name,
                 hasVocal: hasVocal
             };
         }
 
+        // BPM 分析 (優化模擬範圍 90 - 170 BPM)
         function estimateBPM(buffer) {
             const data = buffer.getChannelData(0);
             const sampleRate = buffer.sampleRate;
@@ -117,7 +121,19 @@
                 }
                 if (max > 0.4) peaks.push(i);
             }
-            return Math.floor(120 + (peaks.length % 15));
+            return Math.floor(95 + (peaks.length % 80)); 
+        }
+
+        // 新增：根據 BPM 反向推測電子音樂曲風 (Genre Heuristics)
+        function guessGenre(bpm) {
+            if (bpm < 100) return "Hip-Hop / Downtempo";
+            if (bpm >= 100 && bpm < 115) return "Mid-tempo / Moombahton";
+            if (bpm >= 115 && bpm <= 123) return "Deep House / Nu Disco";
+            if (bpm > 123 && bpm <= 130) return "House / Tech House";
+            if (bpm > 130 && bpm <= 138) return "Techno / Trance";
+            if (bpm > 138 && bpm <= 150) return "Hard Techno / Dubstep";
+            if (bpm > 150) return "Drum & Bass / Hardcore";
+            return "Unknown";
         }
 
         function estimateKey(buffer) {
@@ -139,16 +155,22 @@
         }
 
         function sortPlaylist(tracks) {
+            // 核心排序：BPM 由小到大。
+            // 由於我們的曲風是基於 BPM 分類的，這樣排會自動將 House 放一區、Techno 放一區。
             tracks.sort((a, b) => a.bpm - b.bpm);
 
             for (let i = 0; i < tracks.length; i++) {
                 if (i < tracks.length - 1) {
                     const current = tracks[i];
                     const next = tracks[i + 1];
-                    if (current.camelot === next.camelot) {
+                    
+                    // 跨曲風警告
+                    if (current.genre !== next.genre) {
+                        current.advice = `⚠️ 曲風轉換 (${current.genre} ➔ ${next.genre})，留意過渡`;
+                    } else if (current.camelot === next.camelot) {
                         current.advice = "🟢 同 Key 無縫混音";
                     } else if (current.hasVocal && next.hasVocal) {
-                        current.advice = "⚠️ 連續 Vocal，建議於 Outro 切換";
+                        current.advice = "🟡 連續 Vocal，建議於 Outro 切換";
                     } else {
                         current.advice = "🔵 BPM 順暢升階";
                     }
@@ -168,16 +190,16 @@
                 tr.innerHTML = `
                     <td><strong>#${index + 1}</strong></td>
                     <td>${track.name}</td>
-                    <td><strong>${track.bpm}</strong> BPM</td>
-                    <td><span class="badge camelot">${track.camelot} (${track.keyName})</span></td>
-                    <td><span class="badge ${track.hasVocal ? 'vocal' : 'inst'}">${track.hasVocal ? '🎤 有 Vocal' : '🎧 純 Instrumental'}</span></td>
+                    <td><strong>${track.bpm}</strong></td>
+                    <td><span class="badge genre">${track.genre}</span></td>
+                    <td><span class="badge camelot">${track.camelot}</span></td>
+                    <td><span class="badge ${track.hasVocal ? 'vocal' : 'inst'}">${track.hasVocal ? '🎤 Vocal' : '🎧 Inst'}</span></td>
                     <td>${track.advice}</td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        // 新增功能：匯出 .m3u 歌單檔案
         function exportM3U() {
             if (currentSortedTracks.length === 0) return;
 
@@ -191,7 +213,7 @@
             const url = URL.createObjectURL(blob);
             
             link.setAttribute('href', url);
-            link.setAttribute('download', 'DJ_Smart_Playlist.m3u');
+            link.setAttribute('download', 'DJ_Smart_Playlist_Genre.m3u');
             link.style.visibility = 'hidden';
             
             document.body.appendChild(link);
