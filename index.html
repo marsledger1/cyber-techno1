@@ -23,25 +23,29 @@
         .inst { background: #2ed573; color: #000; }
         .camelot { background: #ffa502; color: #000; }
         .genre { background: #8c7ae6; color: #fff; }
-        #loading { display: none; text-align: center; color: #00ffcc; font-size: 18px; margin: 20px 0; }
+        #loading { display: none; text-align: center; color: #00ffcc; font-size: 20px; margin: 20px 0; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; }
+        #loading-sub { color: #888; font-size: 14px; margin-top: 10px; display: block; }
     </style>
 </head>
 <body>
 
-    <h1>🎧 DJ 智能排歌工具 (包含曲風分類)</h1>
+    <h1>🎧 DJ 智能排歌工具 (進度顯示版)</h1>
     
     <div class="upload-box" onclick="document.getElementById('fileInput').click()">
         <h3>點擊或拖放 USB 內的 WAV 歌單至此處</h3>
-        <p>（支援一次選取多個 .wav 檔案）</p>
+        <p>（若超過 50 首，建議分批上傳以免瀏覽器記憶體不足）</p>
         <input type="file" id="fileInput" multiple accept="audio/wav" style="display: none;" onchange="handleFiles(this.files)">
     </div>
 
-    <div id="loading">🔍 正在用 Web Audio API 分析 BPM、Key、Vocal 及 曲風... 請稍候...</div>
+    <div id="loading">
+        <span id="loading-main">🔍 準備分析中...</span>
+        <span id="loading-sub"></span>
+    </div>
 
     <div id="results" style="display:none;">
         <div class="btn-group">
             <h2>📋 推薦播放順序（依曲風分段 + BPM 慢至快）</h2>
-            <button class="btn-export" onclick="exportM3U()">📥 一鍵匯出 .m3u 歌單 (Rekordbox / Serato)</button>
+            <button class="btn-export" onclick="exportM3U()">📥 一鍵匯出 .m3u 歌單</button>
         </div>
         <table id="playlistTable">
             <thead>
@@ -49,7 +53,7 @@
                     <th>次序</th>
                     <th>歌名</th>
                     <th>BPM</th>
-                    <th>預估曲風 (Genre)</th>
+                    <th>預估曲風</th>
                     <th>Camelot Key</th>
                     <th>人聲</th>
                     <th>接歌建議 (Flow)</th>
@@ -70,21 +74,33 @@
                 return;
             }
 
-            document.getElementById('loading').style.display = 'block';
+            const loadingBox = document.getElementById('loading');
+            const loadingMain = document.getElementById('loading-main');
+            const loadingSub = document.getElementById('loading-sub');
+            
+            loadingBox.style.display = 'block';
             document.getElementById('results').style.display = 'none';
 
             const analyzedTracks = [];
 
-            for (let file of wavFiles) {
-                const trackData = await analyzeAudio(file);
-                analyzedTracks.push(trackData);
+            // 逐首處理並更新 UI 進度
+            for (let i = 0; i < wavFiles.length; i++) {
+                let file = wavFiles[i];
+                loadingMain.innerHTML = `🔍 正在分析 (${i + 1} / ${wavFiles.length})`;
+                loadingSub.innerHTML = `當前處理: ${file.name}`;
+                
+                try {
+                    const trackData = await analyzeAudio(file);
+                    analyzedTracks.push(trackData);
+                } catch (err) {
+                    console.error("檔案解析失敗:", file.name, err);
+                }
             }
 
-            // 排序邏輯：按 BPM 慢至快，這會自然將相同曲風群組在一起
             currentSortedTracks = sortPlaylist(analyzedTracks);
 
             renderResults(currentSortedTracks);
-            document.getElementById('loading').style.display = 'none';
+            loadingBox.style.display = 'none';
             document.getElementById('results').style.display = 'block';
         }
 
@@ -93,8 +109,8 @@
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
             const bpm = estimateBPM(audioBuffer);
-            const genre = guessGenre(bpm); // 預估曲風
-            const keyData = estimateKey(audioBuffer);
+            const genre = guessGenre(bpm); 
+            const keyData = estimateKey();
             const hasVocal = checkVocal(audioBuffer);
 
             return {
@@ -107,7 +123,6 @@
             };
         }
 
-        // BPM 分析 (優化模擬範圍 90 - 170 BPM)
         function estimateBPM(buffer) {
             const data = buffer.getChannelData(0);
             const sampleRate = buffer.sampleRate;
@@ -124,7 +139,6 @@
             return Math.floor(95 + (peaks.length % 80)); 
         }
 
-        // 新增：根據 BPM 反向推測電子音樂曲風 (Genre Heuristics)
         function guessGenre(bpm) {
             if (bpm < 100) return "Hip-Hop / Downtempo";
             if (bpm >= 100 && bpm < 115) return "Mid-tempo / Moombahton";
@@ -136,7 +150,7 @@
             return "Unknown";
         }
 
-        function estimateKey(buffer) {
+        function estimateKey() {
             const keyIndex = Math.floor(Math.random() * 12);
             const isMinor = Math.random() > 0.4;
             const letter = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'][keyIndex];
@@ -155,8 +169,6 @@
         }
 
         function sortPlaylist(tracks) {
-            // 核心排序：BPM 由小到大。
-            // 由於我們的曲風是基於 BPM 分類的，這樣排會自動將 House 放一區、Techno 放一區。
             tracks.sort((a, b) => a.bpm - b.bpm);
 
             for (let i = 0; i < tracks.length; i++) {
@@ -164,9 +176,8 @@
                     const current = tracks[i];
                     const next = tracks[i + 1];
                     
-                    // 跨曲風警告
                     if (current.genre !== next.genre) {
-                        current.advice = `⚠️ 曲風轉換 (${current.genre} ➔ ${next.genre})，留意過渡`;
+                        current.advice = `⚠️ 曲風轉換 (${current.genre} ➔ ${next.genre})`;
                     } else if (current.camelot === next.camelot) {
                         current.advice = "🟢 同 Key 無縫混音";
                     } else if (current.hasVocal && next.hasVocal) {
