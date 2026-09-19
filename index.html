@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DJ Track Smart Sorter & Analyzer (Genre Edition)</title>
+    <title>DJ Track Smart Sorter (Rekordbox Sync Edition)</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 1050px; margin: 0 auto; }
         h1 { color: #00ffcc; text-align: center; }
@@ -12,50 +12,38 @@
         .btn-group { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; }
         button { background: #00ffcc; color: #000; font-weight: bold; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; }
         button:hover { background: #00d6a8; transform: translateY(-2px); }
-        .btn-export { background: #ff007f; color: #fff; }
-        .btn-export:hover { background: #d6006b; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #1e1e1e; border-radius: 8px; overflow: hidden; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
         th { background: #252525; color: #00ffcc; }
         tr:hover { background: #2c2c2c; }
         .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; display: inline-block; margin-bottom: 4px; }
-        .vocal { background: #ff4757; color: #fff; }
-        .inst { background: #2ed573; color: #000; }
         .camelot { background: #ffa502; color: #000; }
         .genre { background: #8c7ae6; color: #fff; }
-        #loading { display: none; text-align: center; color: #00ffcc; font-size: 20px; margin: 20px 0; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; }
-        #loading-sub { color: #888; font-size: 14px; margin-top: 10px; display: block; }
     </style>
 </head>
 <body>
 
-    <h1>🎧 DJ 智能排歌工具 (進度顯示版)</h1>
+    <h1>🎧 DJ 智能排歌工具 (Rekordbox 準確數據版)</h1>
     
     <div class="upload-box" onclick="document.getElementById('fileInput').click()">
-        <h3>點擊或拖放 USB 內的 WAV 歌單至此處</h3>
-        <p>（若超過 50 首，建議分批上傳以免瀏覽器記憶體不足）</p>
-        <input type="file" id="fileInput" multiple accept="audio/wav" style="display: none;" onchange="handleFiles(this.files)">
-    </div>
-
-    <div id="loading">
-        <span id="loading-main">🔍 準備分析中...</span>
-        <span id="loading-sub"></span>
+        <h3>點擊或拖放 Rekordbox 匯出的 .txt 播放清單至此處</h3>
+        <p>（讀取 Rekordbox 準確 BPM 與 Key 數據，瞬間完成排序）</p>
+        <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFile(this.files[0])">
     </div>
 
     <div id="results" style="display:none;">
         <div class="btn-group">
-            <h2>📋 推薦播放順序（依曲風分段 + BPM 慢至快）</h2>
-            <button class="btn-export" onclick="exportM3U()">📥 一鍵匯出 .m3u 歌單</button>
+            <h2>📋 推薦播放順序（依 BPM 慢至快 + 防撞 Flow 建議）</h2>
         </div>
         <table id="playlistTable">
             <thead>
                 <tr>
                     <th>次序</th>
                     <th>歌名</th>
+                    <th>歌手</th>
                     <th>BPM</th>
-                    <th>預估曲風</th>
-                    <th>Camelot Key</th>
-                    <th>人聲</th>
+                    <th>Key</th>
+                    <th>曲風 (Genre)</th>
                     <th>接歌建議 (Flow)</th>
                 </tr>
             </thead>
@@ -64,132 +52,82 @@
     </div>
 
     <script>
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let currentSortedTracks = [];
+        function handleFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const content = e.target.result;
+                parseRekordboxTxt(content);
+            };
+            
+            // Rekordbox 匯出的 txt 通常是 UTF-16LE 或 UTF-8
+            reader.readAsText(file, 'utf-16le'); 
+        }
 
-        async function handleFiles(files) {
-            const wavFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.wav'));
-            if (wavFiles.length === 0) {
-                alert('請選擇 WAV 格式的音訊檔案！');
+        function parseRekordboxTxt(text) {
+            // 解析 TSV (Tab-Separated Values)
+            const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            if (lines.length < 2) {
+                alert("檔案格式似乎不正確，請確定是從 Rekordbox 匯出的 .txt 播放清單！");
                 return;
             }
 
-            const loadingBox = document.getElementById('loading');
-            const loadingMain = document.getElementById('loading-main');
-            const loadingSub = document.getElementById('loading-sub');
+            const headers = lines[0].split('\t').map(h => h.toLowerCase().replace(/"/g, ''));
             
-            loadingBox.style.display = 'block';
-            document.getElementById('results').style.display = 'none';
+            // 找出關鍵欄位的索引位置
+            const trackIdx = headers.findIndex(h => h.includes('track title') || h.includes('名稱') || h.includes('曲名'));
+            const artistIdx = headers.findIndex(h => h.includes('artist') || h.includes('演出者'));
+            const bpmIdx = headers.findIndex(h => h === 'bpm');
+            const keyIdx = headers.findIndex(h => h === 'key' || h.includes('調號'));
+            const genreIdx = headers.findIndex(h => h === 'genre' || h.includes('類型') || h.includes('曲風'));
 
-            const analyzedTracks = [];
+            if (trackIdx === -1 || bpmIdx === -1) {
+                alert("找不到 BPM 或歌曲名稱欄位，請確認你的 Rekordbox 欄位有顯示這兩項！");
+                return;
+            }
 
-            // 逐首處理並更新 UI 進度
-            for (let i = 0; i < wavFiles.length; i++) {
-                let file = wavFiles[i];
-                loadingMain.innerHTML = `🔍 正在分析 (${i + 1} / ${wavFiles.length})`;
-                loadingSub.innerHTML = `當前處理: ${file.name}`;
-                
-                try {
-                    const trackData = await analyzeAudio(file);
-                    analyzedTracks.push(trackData);
-                } catch (err) {
-                    console.error("檔案解析失敗:", file.name, err);
+            let tracks = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split('\t').map(c => c.replace(/"/g, ''));
+                if (cols.length > bpmIdx) {
+                    tracks.push({
+                        name: cols[trackIdx] || 'Unknown',
+                        artist: artistIdx !== -1 ? cols[artistIdx] : '',
+                        bpm: parseFloat(cols[bpmIdx]) || 0,
+                        key: keyIdx !== -1 ? cols[keyIdx] : '',
+                        genre: genreIdx !== -1 ? (cols[genreIdx] || 'Unknown') : 'Unknown'
+                    });
                 }
             }
 
-            currentSortedTracks = sortPlaylist(analyzedTracks);
-
-            renderResults(currentSortedTracks);
-            loadingBox.style.display = 'none';
+            // 核心排序：依照 BPM 慢到快
+            tracks.sort((a, b) => a.bpm - b.bpm);
+            generateAdvice(tracks);
+            renderResults(tracks);
             document.getElementById('results').style.display = 'block';
         }
 
-        async function analyzeAudio(file) {
-            const arrayBuffer = await file.arrayBuffer();
-            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-            const bpm = estimateBPM(audioBuffer);
-            const genre = guessGenre(bpm); 
-            const keyData = estimateKey();
-            const hasVocal = checkVocal(audioBuffer);
-
-            return {
-                name: file.name,
-                bpm: bpm,
-                genre: genre,
-                camelot: keyData.camelot,
-                keyName: keyData.name,
-                hasVocal: hasVocal
-            };
-        }
-
-        function estimateBPM(buffer) {
-            const data = buffer.getChannelData(0);
-            const sampleRate = buffer.sampleRate;
-            let peaks = [];
-            const step = Math.floor(sampleRate / 10); 
-            for (let i = 0; i < data.length; i += step) {
-                let max = 0;
-                for (let j = 0; j < step; j++) {
-                    let val = Math.abs(data[i + j] || 0);
-                    if (val > max) max = val;
-                }
-                if (max > 0.4) peaks.push(i);
-            }
-            return Math.floor(95 + (peaks.length % 80)); 
-        }
-
-        function guessGenre(bpm) {
-            if (bpm < 100) return "Hip-Hop / Downtempo";
-            if (bpm >= 100 && bpm < 115) return "Mid-tempo / Moombahton";
-            if (bpm >= 115 && bpm <= 123) return "Deep House / Nu Disco";
-            if (bpm > 123 && bpm <= 130) return "House / Tech House";
-            if (bpm > 130 && bpm <= 138) return "Techno / Trance";
-            if (bpm > 138 && bpm <= 150) return "Hard Techno / Dubstep";
-            if (bpm > 150) return "Drum & Bass / Hardcore";
-            return "Unknown";
-        }
-
-        function estimateKey() {
-            const keyIndex = Math.floor(Math.random() * 12);
-            const isMinor = Math.random() > 0.4;
-            const letter = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'][keyIndex];
-            const camelotNum = (keyIndex * 7 % 12) + 1;
-            const camelotCode = `${camelotNum}${isMinor ? 'A' : 'B'}`;
-            return { name: `${letter} ${isMinor ? 'minor' : 'major'}`, camelot: camelotCode };
-        }
-
-        function checkVocal(buffer) {
-            const data = buffer.getChannelData(0);
-            let energySum = 0;
-            for (let i = 0; i < Math.min(data.length, 1000000); i += 10) {
-                energySum += Math.abs(data[i]);
-            }
-            return (energySum / 100000) > 0.15;
-        }
-
-        function sortPlaylist(tracks) {
-            tracks.sort((a, b) => a.bpm - b.bpm);
-
+        function generateAdvice(tracks) {
             for (let i = 0; i < tracks.length; i++) {
                 if (i < tracks.length - 1) {
                     const current = tracks[i];
                     const next = tracks[i + 1];
                     
-                    if (current.genre !== next.genre) {
+                    if (current.genre !== next.genre && current.genre !== 'Unknown' && next.genre !== 'Unknown') {
                         current.advice = `⚠️ 曲風轉換 (${current.genre} ➔ ${next.genre})`;
-                    } else if (current.camelot === next.camelot) {
-                        current.advice = "🟢 同 Key 無縫混音";
-                    } else if (current.hasVocal && next.hasVocal) {
-                        current.advice = "🟡 連續 Vocal，建議於 Outro 切換";
+                    } else if (current.key === next.key && current.key !== '') {
+                        current.advice = "🟢 同 Key 無縫混音 (Harmonic Mix)";
+                    } else if (next.bpm - current.bpm > 3) {
+                        current.advice = "🟡 BPM 跳躍較大，建議使用效果器或 Breakdown 時切換";
                     } else {
-                        current.advice = "🔵 BPM 順暢升階";
+                        current.advice = "🔵 BPM 平穩過渡";
                     }
                 } else {
                     tracks[i].advice = "🏁 壓軸歌曲";
                 }
             }
-            return tracks;
         }
 
         function renderResults(tracks) {
@@ -201,35 +139,14 @@
                 tr.innerHTML = `
                     <td><strong>#${index + 1}</strong></td>
                     <td>${track.name}</td>
-                    <td><strong>${track.bpm}</strong></td>
+                    <td>${track.artist}</td>
+                    <td><strong>${track.bpm.toFixed(2)}</strong></td>
+                    <td><span class="badge camelot">${track.key || '-'}</span></td>
                     <td><span class="badge genre">${track.genre}</span></td>
-                    <td><span class="badge camelot">${track.camelot}</span></td>
-                    <td><span class="badge ${track.hasVocal ? 'vocal' : 'inst'}">${track.hasVocal ? '🎤 Vocal' : '🎧 Inst'}</span></td>
                     <td>${track.advice}</td>
                 `;
                 tbody.appendChild(tr);
             });
-        }
-
-        function exportM3U() {
-            if (currentSortedTracks.length === 0) return;
-
-            let m3uContent = "#EXTM3U\n";
-            currentSortedTracks.forEach(track => {
-                m3uContent += `#EXTINF:-1,${track.name}\n${track.name}\n`;
-            });
-
-            const blob = new Blob([m3uContent], { type: 'audio/x-mpegurl;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            
-            link.setAttribute('href', url);
-            link.setAttribute('download', 'DJ_Smart_Playlist_Genre.m3u');
-            link.style.visibility = 'hidden';
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
         }
     </script>
 </body>
